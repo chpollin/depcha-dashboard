@@ -1,0 +1,149 @@
+/* Chart Containers */
+.chart-container {
+    width: 100%;
+    height: 400px;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Card Styling */
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+    border: none;
+    margin-bottom: 1rem;
+}
+
+.card-header {
+    background-color: #ffffff;
+    border-bottom: 1px solid rgba(0,0,0,.125);
+    padding: 1rem;
+}
+
+/* Quick Stats */
+.quick-stats-card {
+    text-align: center;
+    padding: 1.5rem;
+}
+
+.quick-stats-card h2 {
+    font-size: 2rem;
+    margin: 0.5rem 0;
+    color: #2c3e50;
+}
+
+.quick-stats-card h6 {
+    color: #7f8c8d;
+    margin: 0;
+}
+
+/* Chart Elements */
+.axis path,
+.axis line {
+    stroke: #e0e0e0;
+}
+
+.axis text {
+    fill: #666;
+    font-size: 12px;
+}
+
+/* Time Series Chart */
+.time-series-line {
+    fill: none;
+    stroke-width: 2;
+}
+
+.time-series-dot {
+    fill: #fff;
+    stroke-width: 2;
+}
+
+/* Distribution Chart */
+.distribution-arc {
+    stroke: #fff;
+    stroke-width: 1;
+}
+
+.distribution-label {
+    font-size: 12px;
+    fill: #666;
+}
+
+/* Heatmap */
+.heatmap-cell {
+    stroke: #fff;
+    stroke-width: 1;
+}
+
+.heatmap-label {
+    font-size: 10px;
+    fill: #666;
+}
+
+/* Top Traders Chart */
+.bar {
+    fill: #69b3a2;
+    transition: fill 0.3s ease;
+}
+
+.bar:hover {
+    fill: #4a9b8c;
+}
+
+/* Loading Spinner */
+#loadingSpinner {
+    background: rgba(255, 255, 255, 0.8);
+    z-index: 1000;
+}
+
+/* Table Styles */
+.table {
+    font-size: 0.875rem;
+}
+
+.table thead th {
+    background-color: #f8f9fa;
+    border-top: none;
+}
+
+/* Controls */
+.btn-group .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+.form-select {
+    font-size: 0.875rem;
+}
+
+/* Tooltips */
+.tooltip {
+    position: absolute;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    pointer-events: none;
+    font-size: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    z-index: 100;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .chart-container {
+        height: 300px;
+    }
+    
+    .card-header {
+        flex-direction: column;
+    }
+    
+    .btn-group {
+        margin-top: 0.5rem;
+    }
+    
+    .quick-stats-card h2 {
+        font-size: 1.5rem;
+    }
+}
