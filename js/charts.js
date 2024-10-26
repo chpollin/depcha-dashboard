@@ -1,3 +1,5 @@
+export default Charts;
+
 // charts.js
 class Charts {
     constructor() {

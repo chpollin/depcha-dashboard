@@ -1,5 +1,6 @@
 import DataHandler from './data.js';
-import Charts from './charts.js';
+import { Charts } from './charts.js';
+
 
 class WheatonDashboard {
     constructor() {
