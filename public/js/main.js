@@ -1,4 +1,3 @@
-// main.js
 const App = {
     currentFilters: {
         dateRange: 'all',
@@ -10,19 +9,28 @@ const App = {
     filteredData: null,
 
     async initialize() {
-        await this.initializeContexts(); // Changed from loadData to initializeContexts
-        this.setupEventListeners();
-        ChartsService.initializeCharts();
+        try {
+            if (!this.debug.validateSetup()) {
+                throw new Error('Required DOM elements missing');
+            }
+            await this.loadInitialContext();
+            this.setupEventListeners();
+            ChartsService.initializeCharts();
+            console.log('App initialized successfully');
+        } catch (error) {
+            console.error('Error initializing app:', error);
+            this.showError('Failed to initialize application. Please refresh the page.');
+        }
     },
 
-    async initializeContexts() {
+    async loadInitialContext() {
         try {
             this.showLoading(true);
             const contexts = await ContextService.getContexts();
             this.populateContextSelector(contexts);
             this.showLoading(false);
         } catch (error) {
-            console.error('Error initializing contexts:', error);
+            console.error('Error loading initial context:', error);
             this.showError('Failed to load available contexts. Please try again later.');
             this.showLoading(false);
         }
@@ -53,7 +61,7 @@ const App = {
 
         // Loading Progress
         window.addEventListener('loadingProgress', (e) => this.updateLoadingProgress(e.detail));
-        
+
         // Navigation
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', (e) => {
@@ -76,14 +84,6 @@ const App = {
 
         // Filters
         this.setupFilterListeners();
-
-        // Normalize data toggle for seasonal patterns
-        const normalizeToggle = document.getElementById('normalizeData');
-        if (normalizeToggle) {
-            normalizeToggle.addEventListener('change', (e) => {
-                this.updateSeasonalChart(e.target.checked);
-            });
-        }
 
         // Export button
         const exportBtn = document.getElementById('exportBtn');
@@ -131,64 +131,6 @@ const App = {
             resetButton.addEventListener('click', () => this.resetFilters());
         }
     },
-
-    async loadData() {
-        try {
-            this.showLoading(true);
-            await DataService.fetchData(); // This was the error
-            this.updateUI(DataService.processedData);
-            this.showLoading(false);
-        } catch (error) {
-            console.error('Error loading data:', error);
-            this.showError('Failed to load data. Please try again later.');
-            this.showLoading(false);
-        }
-    },
-
-    // Add these new methods
-    async initializeContexts() {
-        try {
-            this.showLoading(true);
-            const contexts = await ContextService.getContexts();
-            this.populateContextSelector(contexts);
-            this.showLoading(false);
-        } catch (error) {
-            console.error('Error initializing contexts:', error);
-            this.showError('Failed to load available contexts. Please try again later.');
-            this.showLoading(false);
-        }
-    },
-
-    populateContextSelector(contexts) {
-        const selector = document.getElementById('contextSelector');
-        if (!selector) return;
-
-        const options = contexts.map(context => `
-            <option value="${context.id}">
-                ${context.title} (${context.date})
-            </option>
-        `);
-
-        selector.innerHTML = `
-            <option value="">Select a Collection...</option>
-            ${options.join('')}
-        `;
-    },
-
-    // Update setupEventListeners to include context selector
-    setupEventListeners() {
-        // Context Selection
-        const contextSelector = document.getElementById('contextSelector');
-        if (contextSelector) {
-            contextSelector.addEventListener('change', (e) => this.handleContextChange(e.target.value));
-        }
-
-        // Loading Progress
-        window.addEventListener('loadingProgress', (e) => this.updateLoadingProgress(e.detail));
-
-        // ... rest of your existing event listeners ...
-    },
-
     async handleContextChange(contextId) {
         if (!contextId) return;
 
@@ -203,10 +145,7 @@ const App = {
             this.updateContextInfo(context);
             
             // Load data for all books in the context
-            await DataService.loadContext(context);
-            
-            // Update UI with the loaded data
-            this.updateUI(DataService.processedData);
+            await this.loadContextData(context);
             
             this.showLoadingProgress(false);
             this.showLoading(false);
@@ -215,6 +154,44 @@ const App = {
             this.showError('Failed to load selected context. Please try again.');
             this.showLoading(false);
             this.showLoadingProgress(false);
+        }
+    },
+
+    updateContextInfo(context) {
+        const infoElement = document.getElementById('contextInfo');
+        if (!infoElement) return;
+
+        infoElement.innerHTML = `
+            <h6>${context.title}</h6>
+            <p class="text-muted mb-1">${context.date}</p>
+            ${context.description ? `<p class="small mb-1">${context.description}</p>` : ''}
+            <div class="small">
+                <strong>Location:</strong> ${context.coverage || 'N/A'}<br>
+                ${context.contributors?.length ? 
+                    `<strong>Contributors:</strong> ${context.contributors.join(', ')}` : ''}
+            </div>
+        `;
+    },
+
+    async loadContextData(context) {
+        try {
+            // Reset loaded books display
+            this.resetLoadedBooks();
+            
+            // Load data for all books
+            const data = await DataService.loadContext(context);
+            
+            // Setup filters based on new data
+            this.setupFilters();
+            
+            // Update UI with new data
+            this.updateUI(data);
+            
+            // Show success message
+            this.showSuccess(`Successfully loaded ${context.books.length} books from ${context.title}`);
+        } catch (error) {
+            console.error('Error loading context data:', error);
+            this.showError('Error loading context data. Some books may be missing.');
         }
     },
 
@@ -296,8 +273,6 @@ const App = {
             transactions: filteredTransactions,
             timeSeriesData: DataService.generateTimeSeriesData(filteredTransactions),
             networkData: DataService.generateNetworkData(filteredTransactions),
-            topTraders: DataService.getTopTraders(filteredTransactions),
-            recentTransactions: DataService.getRecentTransactions(filteredTransactions),
             statistics: DataService.generateStatistics(filteredTransactions)
         };
 
@@ -312,7 +287,6 @@ const App = {
         this.filteredData = null;
         this.updateUI(DataService.processedData);
     },
-
     handleTimeFrameChange(timeFrame) {
         this.currentTimeFrame = timeFrame;
         
@@ -359,27 +333,44 @@ const App = {
 
     updateUI(data) {
         if (!data) return;
-
+    
         const stats = data.statistics;
         
         // Update quick stats
-        document.getElementById('total-transactions').textContent = stats.totalTransactions.toLocaleString();
-        document.getElementById('unique-traders').textContent = stats.uniqueTraders.toLocaleString();
-        document.getElementById('total-commodities').textContent = stats.uniqueCommodities.toLocaleString();
-        document.getElementById('date-range').textContent = 
-            `${stats.dateRange.start.getFullYear()}-${stats.dateRange.end.getFullYear()}`;
-
+        document.getElementById('total-transactions').textContent = 
+            (stats.totalTransactions || 0).toLocaleString();
+        document.getElementById('unique-traders').textContent = 
+            (stats.uniqueTraders || 0).toLocaleString();
+        document.getElementById('total-commodities').textContent = 
+            (stats.uniqueCommodities || 0).toLocaleString();
+        
+        // Update date range
+        const dateRangeText = stats.dateRange && stats.dateRange.start && stats.dateRange.end
+            ? `${stats.dateRange.start.getFullYear()}-${stats.dateRange.end.getFullYear()}`
+            : 'No date range available';
+        document.getElementById('date-range').textContent = dateRangeText;
+    
         // Update charts with current timeframe
-        ChartsService.updateTimeSeriesChart(data.timeSeriesData, this.currentTimeFrame);
-        ChartsService.updateNetworkChart(data.networkData);
+        if (data.timeSeriesData) {
+            ChartsService.updateTimeSeriesChart(data.timeSeriesData, this.currentTimeFrame);
+        }
+        
+        if (data.networkData) {
+            ChartsService.updateNetworkChart(data.networkData);
+        }
         
         // Update transactions table
-        this.updateTransactionsTable(data.recentTransactions);
+        this.updateTransactionsTable(data.transactions.slice(0, 10));
     },
 
     updateTransactionsTable(transactions) {
         const tbody = document.querySelector('#transactionTable tbody');
         if (!tbody) return;
+
+        if (!transactions || transactions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">No transactions available</td></tr>';
+            return;
+        }
 
         tbody.innerHTML = transactions.map(t => `
             <tr>
@@ -394,31 +385,71 @@ const App = {
     },
 
     handleResize() {
-        // Reinitialize charts
         ChartsService.initializeCharts();
         
-        // Update charts with current data
         const data = this.filteredData || DataService.processedData;
         if (data) {
             this.updateUI(data);
         }
     },
 
-    updateSeasonalChart(normalize) {
-        const data = this.filteredData || DataService.processedData;
-        if (data) {
-            ChartsService.updateSeasonalChart(data.timeSeriesData, normalize);
+    updateLoadingProgress(detail) {
+        if (!detail) return;
+        
+        const { loaded, total, bookId, success } = detail;
+        
+        // Update progress bar
+        const progressBar = document.querySelector('#loadingProgress .progress-bar');
+        if (progressBar) {
+            const percentage = (loaded / total) * 100;
+            progressBar.style.width = `${percentage}%`;
+            progressBar.setAttribute('aria-valuenow', percentage);
+            progressBar.textContent = `Loading: ${loaded}/${total} books`;
+        }
+
+        // Update books list
+        this.updateLoadedBooks(bookId, success);
+    },
+
+    updateLoadedBooks(bookId, success) {
+        const booksListElement = document.getElementById('booksList');
+        if (!booksListElement) return;
+
+        const bookElement = document.createElement('div');
+        bookElement.className = success ? 'text-success' : 'text-danger';
+        bookElement.innerHTML = `${success ? '✓' : '✗'} ${bookId}`;
+        booksListElement.appendChild(bookElement);
+    },
+
+    resetLoadedBooks() {
+        const booksListEl = document.getElementById('booksList');
+        if (!booksListEl) {
+            console.warn('Books list element not found, skipping reset');
+            return;
+        }
+        booksListEl.innerHTML = 'No books loaded yet.';
+    },
+
+    showLoadingProgress(show) {
+        const progress = document.getElementById('loadingProgress');
+        if (progress) {
+            progress.classList.toggle('d-none', !show);
+            if (show) {
+                const progressBar = progress.querySelector('.progress-bar');
+                if (progressBar) {
+                    progressBar.style.width = '0%';
+                    progressBar.setAttribute('aria-valuenow', 0);
+                }
+            }
         }
     },
 
     exportData() {
         const data = this.filteredData || DataService.processedData;
-        if (!data) return;
+        if (!data?.transactions?.length) return;
 
-        // Create CSV content
         const csvContent = this.generateCSV(data.transactions);
         
-        // Create and trigger download
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
@@ -448,130 +479,7 @@ const App = {
         ].join('\n');
     },
 
-    async handleContextChange(contextId) {
-        if (!contextId) return;
-
-        try {
-            this.showLoading(true);
-            this.showLoadingProgress(true);
-            
-            // Select context and get its books
-            const context = await ContextService.selectContext(contextId);
-            
-            // Update context info display
-            this.updateContextInfo(context);
-            
-            // Load data for all books in the context
-            await this.loadContextData(context);
-            
-            this.showLoadingProgress(false);
-            this.showLoading(false);
-        } catch (error) {
-            console.error('Error changing context:', error);
-            this.showError('Failed to load selected context. Please try again.');
-            this.showLoading(false);
-            this.showLoadingProgress(false);
-        }
-    },
-
-    updateContextInfo(context) {
-        const infoElement = document.getElementById('contextInfo');
-        if (!infoElement) return;
-
-        infoElement.innerHTML = `
-            <div class="card mb-3">
-                <div class="card-body">
-                    <h5 class="card-title">${context.title}</h5>
-                    <h6 class="card-subtitle mb-2 text-muted">${context.date}</h6>
-                    ${context.description ? `<p class="card-text">${context.description}</p>` : ''}
-                    <div class="small">
-                        <strong>Location:</strong> ${context.coverage}<br>
-                        <strong>Contributors:</strong> ${context.contributors.join(', ')}
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    async loadContextData(context) {
-        try {
-            // Reset loaded books display
-            this.resetLoadedBooks();
-            
-            // Load data for all books
-            const data = await DataService.loadContext(context);
-            
-            // Setup filters based on new data
-            this.setupFilters();
-            
-            // Update UI with new data
-            this.updateUI(data);
-            
-            // Show success message
-            this.showSuccess(`Successfully loaded ${context.books.length} books from ${context.title}`);
-        } catch (error) {
-            console.error('Error loading context data:', error);
-            this.showError('Error loading context data. Some books may be missing.');
-        }
-    },
-
-    updateLoadingProgress(progress) {
-        const { loaded, total, bookId } = progress;
-        const progressBar = document.querySelector('#loadingProgress .progress-bar');
-        if (!progressBar) return;
-
-        const percentage = (loaded / total) * 100;
-        progressBar.style.width = `${percentage}%`;
-        progressBar.setAttribute('aria-valuenow', percentage);
-        progressBar.textContent = `Loading: ${loaded}/${total} books`;
-
-        // Update loaded books list
-        this.updateLoadedBooks(bookId, loaded === total);
-    },
-
-    updateLoadedBooks(bookId, isComplete) {
-        const booksListElement = document.getElementById('booksList');
-        if (!booksListElement) return;
-
-        const bookElement = document.createElement('div');
-        bookElement.className = 'text-success';
-        bookElement.innerHTML = `✓ Loaded: ${bookId}`;
-        booksListElement.appendChild(bookElement);
-
-        if (isComplete) {
-            const summaryElement = document.createElement('div');
-            summaryElement.className = 'mt-2 fw-bold';
-            summaryElement.textContent = 'All books loaded successfully!';
-            booksListElement.appendChild(summaryElement);
-        }
-
-        document.getElementById('loadedBooks').classList.remove('d-none');
-    },
-
-    resetLoadedBooks() {
-        const booksListElement = document.getElementById('booksList');
-        if (booksListElement) {
-            booksListElement.innerHTML = '';
-        }
-        document.getElementById('loadedBooks').classList.add('d-none');
-    },
-
-    showLoadingProgress(show) {
-        const progress = document.getElementById('loadingProgress');
-        if (progress) {
-            progress.classList.toggle('d-none', !show);
-            if (show) {
-                const progressBar = progress.querySelector('.progress-bar');
-                if (progressBar) {
-                    progressBar.style.width = '0%';
-                    progressBar.setAttribute('aria-valuenow', 0);
-                }
-            }
-        }
-    },
-
     showSuccess(message) {
-        // Add success alert
         const alertHtml = `
             <div class="alert alert-success alert-dismissible fade show" role="alert">
                 ${message}
@@ -584,21 +492,57 @@ const App = {
         }
     },
 
-    showLoading(show) {
-        const spinner = document.getElementById('loadingSpinner');
-        if (spinner) {
-            if (show) {
-                spinner.classList.remove('d-none');
-            } else {
-                spinner.classList.add('d-none');
-            }
+    showError(message) {
+        console.error(message);
+        const alertHtml = `
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        
+        const container = document.getElementById('errorContainer') || document.querySelector('.container-fluid');
+        if (container) {
+            container.insertAdjacentHTML('afterbegin', alertHtml);
         }
     },
 
-    showError(message) {
-        console.error(message);
-        alert(message); // Simple error display for now
-        // Could be enhanced with a proper error UI component
+    showLoading(show) {
+        const spinner = document.getElementById('loadingSpinner');
+        if (spinner) {
+            spinner.classList.toggle('d-none', !show);
+        }
+    },
+
+    debug: {
+        validateSetup() {
+            const requiredElements = [
+                'contextSelector',
+                'loadingSpinner',
+                'booksList',
+                'contextInfo',
+                'loadingProgress',
+                'timeSeriesChart',
+                'transactionTable'
+            ];
+            
+            const missing = requiredElements.filter(id => !document.getElementById(id));
+            if (missing.length > 0) {
+                console.error('Missing required elements:', missing);
+                return false;
+            }
+            return true;
+        },
+
+        logState() {
+            console.log('Current App State:', {
+                currentView: this.currentView,
+                currentTimeFrame: this.currentTimeFrame,
+                currentFilters: this.currentFilters,
+                filteredData: this.filteredData,
+                processedData: DataService.processedData
+            });
+        }
     }
 };
 
@@ -606,3 +550,4 @@ const App = {
 document.addEventListener('DOMContentLoaded', () => {
     App.initialize();
 });
+   

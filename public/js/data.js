@@ -8,7 +8,8 @@ const DataService = {
 
     async fetchDataForBook(bookId) {
         try {
-            const response = await fetch(`${this.baseUrl}/transactions/${bookId}`);
+            console.log("Fetching data for book:", bookId); // Debug log
+            const response = await fetch(`${this.baseUrl}/transactions/${encodeURIComponent(bookId)}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -24,34 +25,58 @@ const DataService = {
 
     async loadContext(context) {
         try {
+            console.log("Loading context:", context);
+            if (!context || !context.id) {
+                throw new Error('Invalid context object');
+            }
+    
             this.currentContext = context;
             this.data = [];
             this.loadedBooks.clear();
+    
+            // First fetch the books
+            const booksResponse = await fetch(`/api/context/${context.id}/books`);
+            if (!booksResponse.ok) {
+                throw new Error(`Failed to fetch books: ${booksResponse.status}`);
+            }
             
-            // Load all books in parallel but track progress
+            const books = await booksResponse.json();
+            console.log(`Fetched ${books.length} books`);
+            
+            // Then load transactions for each book
             const bookData = await Promise.all(
-                context.books.map(async book => {
-                    const data = await this.fetchDataForBook(book.id);
-                    // Emit progress event
-                    const event = new CustomEvent('loadingProgress', {
-                        detail: { 
-                            loaded: this.loadedBooks.size,
-                            total: context.books.length,
-                            bookId: book.id,
-                            success: this.loadedBooks.get(book.id)
-                        }
-                    });
-                    window.dispatchEvent(event);
-                    return data;
+                books.map(async book => {
+                    try {
+                        const data = await this.fetchDataForBook(book.identifier);
+                        console.log(`Loaded ${data?.length || 0} transactions for book ${book.identifier}`);
+                        
+                        // Emit progress event
+                        const event = new CustomEvent('loadingProgress', {
+                            detail: { 
+                                loaded: this.loadedBooks.size,
+                                total: books.length,
+                                bookId: book.identifier,
+                                success: !!data
+                            }
+                        });
+                        window.dispatchEvent(event);
+                        
+                        return data;
+                    } catch (err) {
+                        console.error(`Error loading book ${book.identifier}:`, err);
+                        return null;
+                    }
                 })
             );
-
-            // Combine all book data and filter out null results
-            this.data = bookData.flat().filter(Boolean);
+    
+            // Combine and filter out nulls
+            this.data = bookData.filter(Boolean).flat();
+            console.log(`Loaded ${this.data.length} total transactions`);
+            
             this.processData();
             return this.processedData;
         } catch (error) {
-            console.error('Error loading context:', error);
+            console.error('Error in loadContext:', error);
             throw error;
         }
     },

@@ -105,3 +105,19 @@ const ContextService = {
         }
     }
 };
+
+async function loadContextBooks(contextId) {
+    try {
+        console.log("Loading books for context:", contextId);
+        const response = await fetch(`/api/context/${contextId}/books`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const books = await response.json();
+        console.log("Loaded books:", books);
+        return books;
+    } catch (error) {
+        console.error("Error loading books:", error);
+        return [];
+    }
+}
